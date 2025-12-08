@@ -3,8 +3,7 @@
 import { getUser } from "@/auth/server";
 import { prisma } from "@/db/prisma";
 import { handleError } from "@/lib/utils";
-import openai from "@/openai";
-import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
+import { geminiModel } from "@/lib/gemini"; 
 
 export const createNoteAction = async (noteId: string) => {
   try {
@@ -83,38 +82,42 @@ export const askAIAboutNotesAction = async (
     )
     .join("\n");
 
-  const messages: ChatCompletionMessageParam[] = [
-    {
-      role: "developer",
-      content: `
-          You are a helpful assistant that answers questions about a user's notes. 
-          Assume all questions are related to the user's notes. 
-          Make sure that your answers are not too verbose and you speak succinctly. 
-          Your responses MUST be formatted in clean, valid HTML with proper structure. 
-          Use tags like <p>, <strong>, <em>, <ul>, <ol>, <li>, <h1> to <h6>, and <br> when appropriate. 
-          Do NOT wrap the entire response in a single <p> tag unless it's a single paragraph. 
-          Avoid inline styles, JavaScript, or custom attributes.
-          
-          Rendered like this in JSX:
-          <p dangerouslySetInnerHTML={{ __html: YOUR_RESPONSE }} />
-    
-          Here are the user's notes:
-          ${formattedNotes}
-          `,
-    },
-  ];
+  // Build a single prompt string for Gemini instead of OpenAI messages[]
+  let prompt = `
+You are a helpful assistant that answers questions about a user's notes.
+Assume all questions are related to the user's notes.
+
+Requirements:
+- Keep answers concise, not too verbose.
+- Output MUST be clean, valid HTML.
+- Use tags like <p>, <strong>, <em>, <ul>, <ol>, <li>, <h1>-<h6>, <br> when appropriate.
+- Do NOT use inline styles, JavaScript, or custom attributes.
+- Do NOT wrap the entire response in a single <p> if there are multiple paragraphs.
+
+The JSX will render like this:
+<p dangerouslySetInnerHTML={{ __html: YOUR_RESPONSE }} />
+
+Here are the user's notes:
+${formattedNotes}
+
+Conversation so far:
+`;
 
   for (let i = 0; i < newQuestions.length; i++) {
-    messages.push({ role: "user", content: newQuestions[i] });
+    prompt += `\nUser: ${newQuestions[i]}\n`;
     if (responses.length > i) {
-      messages.push({ role: "assistant", content: responses[i] });
+      prompt += `Assistant: ${responses[i]}\n`;
     }
   }
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages,
-  });
+  try {
+    const result = await geminiModel.generateContent(prompt);
+    const text = result.response.text();
 
-  return completion.choices[0].message.content || "A problem has occurred";
+    return text || "A problem has occurred";
+  } catch (error) {
+    console.error("Gemini error in askAIAboutNotesAction:", error);
+    return "A problem has occurred while generating AI response.";
+  }
 };
+
