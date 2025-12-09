@@ -45,7 +45,7 @@ export async function getUser() {
   if (userObject.error) {
     console.error(userObject.error);
     return null;
-  }
+  } 
 
   return userObject.data.user;
 }
