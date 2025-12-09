@@ -1,6 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+// Type for cookies Supabase will try to set
+type CookieToSet = {
+  name: string;
+  value: string;
+  options?: Record<string, any>;
+};
+
 export async function createClient() {
   const cookieStore = await cookies();
 
@@ -12,12 +19,16 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
+
+        // FIX: add proper type
+        setAll(cookiesToSet: CookieToSet[]) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
-            );
-          } catch {}
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch (error) {
+            console.error("Error setting cookies:", error);
+          }
         },
       },
     },
@@ -38,3 +49,4 @@ export async function getUser() {
 
   return userObject.data.user;
 }
+

@@ -1,6 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// Type for cookies that Supabase SSR sets
+type CookieToSet = {
+  name: string;
+  value: string;
+  options?: Record<string, any>;
+};
+
 export async function middleware(request: NextRequest) {
   return await updateSession(request);
 }
@@ -24,17 +31,23 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          );
-        },
+
+        // FIXED: Added proper type
+setAll(cookiesToSet: CookieToSet[]) {
+  // Update request cookies (NO options allowed)
+  cookiesToSet.forEach(({ name, value }) => {
+    request.cookies.set(name, value); 
+  });
+
+  // Create fresh response
+  supabaseResponse = NextResponse.next({ request });
+
+  // Update response cookies (options allowed here)
+  cookiesToSet.forEach(({ name, value, options }) => {
+    supabaseResponse.cookies.set(name, value, options);
+  });
+}
+,
       },
     },
   );
@@ -52,6 +65,7 @@ export async function updateSession(request: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     if (user) {
       return NextResponse.redirect(
         new URL("/", process.env.NEXT_PUBLIC_BASE_URL),
@@ -67,7 +81,7 @@ export async function updateSession(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (user) {
-      // Query database directly instead of fetching from API
+      // Get newest note
       const { data: newestNote } = await supabase
         .from("notes")
         .select("id")
@@ -80,26 +94,27 @@ export async function updateSession(request: NextRequest) {
         const url = request.nextUrl.clone();
         url.searchParams.set("noteId", newestNote.id);
         return NextResponse.redirect(url);
-      } else {
-        // Create new note directly in middleware
-        const { data: newNote } = await supabase
-          .from("notes")
-          .insert({
-            user_id: user.id,
-            title: "Untitled Note",
-            content: "",
-          })
-          .select("id")
-          .single();
+      }
 
-        if (newNote) {
-          const url = request.nextUrl.clone();
-          url.searchParams.set("noteId", newNote.id);
-          return NextResponse.redirect(url);
-        }
+      // Otherwise create one
+      const { data: newNote } = await supabase
+        .from("notes")
+        .insert({
+          user_id: user.id,
+          title: "Untitled Note",
+          content: "",
+        })
+        .select("id")
+        .single();
+
+      if (newNote) {
+        const url = request.nextUrl.clone();
+        url.searchParams.set("noteId", newNote.id);
+        return NextResponse.redirect(url);
       }
     }
   }
 
   return supabaseResponse;
 }
+
