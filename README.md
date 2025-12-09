@@ -101,8 +101,3 @@ src/
 ## 🙌 Contributing
 
 Contributions, issues, and feature requests are welcome.
-
----
-
-* A **professional logo** for Goat Notes
-
