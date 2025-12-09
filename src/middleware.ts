@@ -39,6 +39,11 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
+  // Skip middleware for API routes to prevent circular calls
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
+
   const isAuthRoute =
     request.nextUrl.pathname === "/login" ||
     request.nextUrl.pathname === "/sign-up";
@@ -62,27 +67,36 @@ export async function updateSession(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (user) {
-      const { newestNoteId } = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/fetch-newest-note?userId=${user.id}`,
-      ).then((res) => res.json());
+      // Query database directly instead of fetching from API
+      const { data: newestNote } = await supabase
+        .from("notes")
+        .select("id")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
 
-      if (newestNoteId) {
+      if (newestNote) {
         const url = request.nextUrl.clone();
-        url.searchParams.set("noteId", newestNoteId);
+        url.searchParams.set("noteId", newestNote.id);
         return NextResponse.redirect(url);
       } else {
-        const { noteId } = await fetch(
-          `${process.env.NEXT_PUBLIC_BASE_URL}/api/create-new-note?userId=${user.id}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          },
-        ).then((res) => res.json());
-        const url = request.nextUrl.clone();
-        url.searchParams.set("noteId", noteId);
-        return NextResponse.redirect(url);
+        // Create new note directly in middleware
+        const { data: newNote } = await supabase
+          .from("notes")
+          .insert({
+            user_id: user.id,
+            title: "Untitled Note",
+            content: "",
+          })
+          .select("id")
+          .single();
+
+        if (newNote) {
+          const url = request.nextUrl.clone();
+          url.searchParams.set("noteId", newNote.id);
+          return NextResponse.redirect(url);
+        }
       }
     }
   }
